@@ -29,7 +29,9 @@ void **__alloc2d(size_t rows, size_t cols, size_t ptrsize, size_t type_size, voi
 /*
  * Frees a 2d array allocated by either szalloc2d or salloc2d
  */
-void free2d(void **arr);
+#define free2d(arr) __free2d((void **)(arr));
+
+void __free2d(void **arr);
 
 /*
  * Zero allocates a 2d array of type T with specified rows and cols

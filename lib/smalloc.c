@@ -33,7 +33,7 @@ void *szalloc(size_t size) {
     return scalloc(1, size);
 }
 
-void free2d(void **arr) {
+void __free2d(void **arr) {
     free(arr[0]);
     free(arr);
 }
