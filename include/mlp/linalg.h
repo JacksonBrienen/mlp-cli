@@ -2,6 +2,7 @@
 #define __MLP_LINALG_H__
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include "smalloc.h"
 
 /*
@@ -27,6 +28,8 @@ typedef struct {
 } vector_t;
 
 /* Matrix and Vector Operations */
+
+matrix_t *__matrix(size_t rows, size_t cols, float **m);
 
 /*
  * @returns Heap allocates a matrix with the given rows, cols, and the values within m
