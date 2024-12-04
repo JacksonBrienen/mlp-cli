@@ -36,4 +36,4 @@ set_property(TARGET mlp_static PROPERTY OUTPUT_NAME mlp)
 file(GLOB SRC_FILES CMAKE_CONFIGURE_DEPENDS "src/*.c")
 
 add_executable(mlp-cli ${SRC_FILES})
-target_link_libraries(mlp-cli ${CMAKE_CURRENT_SOURCE_DIR}/bin/mlp.a)
+target_link_libraries(mlp-cli ${CMAKE_CURRENT_SOURCE_DIR}/bin/mlp.a m)
