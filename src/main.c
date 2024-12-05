@@ -7,12 +7,23 @@
 #include <string.h>
 #include <linux/limits.h>
 #include <unistd.h>
+#include "trim.h"
+#include "csv.h"
+
 
 typedef enum {
     NONE = 0,
     MLP = 1,
     CSV = 2
 } MODE;
+
+// globals
+MODE mode = NONE;
+char *csv_file;
+mlp_t* active_mlp = NULL;
+char *mlp_file;
+dataset_t active_dataset;
+
 
 char *modes[] = {
     "none",
@@ -50,11 +61,283 @@ void __pwd(char **args) {
     if(args[1] != NULL && !strcmp(args[1], "?")) {
         printf("usage:\n\tpwd\n\tPrints the current working directory\n");
     } else if(args[1] != NULL ) {
-        printf("usage error: too many arguments");
+        printf("pwd error: too many arguments\n");
     } else {
         char cwd[PATH_MAX];
         getcwd(cwd, sizeof(cwd));
         printf("%s\n", cwd);
+    }
+}
+
+void __csv(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\tcsv\n\tEnters CSV Mode\n");
+    } else if(args[1] != NULL ) {
+        printf("csv error: too many arguments\n");
+    } else {
+        mode = CSV;
+    }
+}
+
+void __csv_exit(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\texit\n\tExits CSV Mode\n");
+    } else if(args[1] != NULL ) {
+        printf("exit error: too many arguments\n");
+    } else {
+        mode = NONE;
+    }
+}
+
+void __exit(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\texit\n\tExits with code 0\n");
+    } else if(args[1] != NULL ) {
+        printf("exit error: too many arguments\n");
+    } else {
+        exit(0);
+    }
+}
+
+void __csv_read(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\tread <csv file>\n\tReads <csv file>\n");
+    } else if(args[1] == NULL ) {
+        printf("read error: no file provided\n");
+    } else {
+        if(strcmp(csv_file, "*")) {
+            for(size_t i = 0; i < active_dataset.len; i++) {
+                $vector(active_dataset.inputs[i]);
+                $vector(active_dataset.targets[i]);
+            }
+            free(active_dataset.inputs);
+            free(active_dataset.targets);
+        }
+
+        if(parsecsv(args[1], &active_dataset) != 0) {
+            printf("read error: could not parse '%s'\n", args[1]);
+            free(csv_file);
+            csv_file = strdup("*");
+        } else {
+            free(csv_file);
+            csv_file = strdup(args[1]);
+        }
+    }
+}
+
+void __csv_print(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\tprint\n\tPrints the currently selected dataset\n");
+    } else if(args[1] != NULL ) {
+        printf("print error: unexpected argument\n");
+    } else if(!strcmp(csv_file, "*")) {
+        printf("print error: no dataset currently selected\n");
+    } else {
+        if(active_dataset.len == 0) {
+            printf("EMPTY DATASET\n");
+        } else {
+            for(size_t n = 0; n < active_dataset.inputs[0]->length; n++) {
+                printf("%-11s", "input");
+            }
+            for(size_t n = 0; n < active_dataset.targets[0]->length; n++) {
+                printf("%-11s", "output");
+            }
+            printf("\n");
+            for(size_t i = 0; i < active_dataset.len; i++) {
+                for(size_t n = 0; n < active_dataset.inputs[i]->length; n++) {
+                    printf("%*f", -11, active_dataset.inputs[i]->vector[n]);
+                }
+                for(size_t n = 0; n < active_dataset.targets[i]->length; n++) {
+                    printf("%*f", -11, active_dataset.targets[i]->vector[n]);
+                }
+                printf("\n");
+            }
+        }
+    }
+}
+
+void __mlp(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\tmlp\n\tEnters MLP Mode\n");
+    } else if(args[1] != NULL ) {
+        printf("mlp error: too many arguments\n");
+    } else {
+        mode = MLP;
+    }
+}
+
+void __mlp_exit(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\texit\n\tExits MLP Mode\n");
+    } else if(args[1] != NULL ) {
+        printf("exit error: too many arguments\n");
+    } else {
+        mode = NONE;
+    }
+}
+
+void __mlp_new(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\tnew\n\tGenerates new MLP\n");
+    } else if(args[1] != NULL ) {
+        printf("new error: too many arguments\n");
+    } else {
+        int num_inputs = -1;
+        int res = 0;
+        while(res != 1 || num_inputs < 1) {
+            printf("Number of input nodes: ");
+            res = scanf("%i", &num_inputs);
+            while (getchar() != '\n');
+        }
+
+        int num_outputs = -1;
+        res = 0;
+        while(res != 1 || num_outputs < 1) {
+            printf("Number of output neurons: ");
+            res = scanf("%i", &num_outputs);
+            while (getchar() != '\n');
+        }
+
+        int num_hidden = -1;
+        res = 0;
+        while(res != 1 || num_hidden < 0) {
+            printf("Number of hidden layers: ");
+            res = scanf("%i", &num_hidden);
+            while (getchar() != '\n');
+        }
+
+        size_t layers[num_hidden + 2];
+        layers[0] = num_inputs;
+        layers[num_hidden + 1] = num_outputs;
+
+        activation_t activations[num_hidden + 1];
+
+        for(int i = 0; i < num_hidden; i++) {
+            res = 0;
+            while(res != 1 || layers[i + 1] < 1 || layers[i + 1] > 1000) {
+                printf("Number of neurons in hidden layer %i: ", i);
+                res = scanf("%lu", &layers[i + 1]);
+                while (getchar() != '\n');
+            }
+
+            int in = 0;
+            res = 0;
+            while(res != 1 || in < 1 || in > 3) {
+                printf("Activation for neurons in hidden layer %i\n", i);
+                printf("(1) Is Sigmoid\n");
+                printf("(2) Is Linear\n");
+                printf("(3) Is ReLU\n");
+                printf("> ");
+                res = scanf("%i", &in);
+                while (getchar() != '\n');
+            }
+            switch(in) {
+                case 1: activations[i] = sig; break;
+                case 2: activations[i] = linear; break;
+                case 3: activations[i] = ReLU; break;
+            }
+        }
+
+        int in = 0;
+        res = 0;
+        while(res != 1 || in < 1 || in > 3) {
+            printf("Activation for output layer\n");
+            printf("(1) Is Sigmoid\n");
+            printf("(2) Is Linear\n");
+            printf("(3) Is ReLU\n");
+            printf("> ");
+            res = scanf("%i", &in);
+            while (getchar() != '\n');
+        }
+        switch(in) {
+            case 1: activations[num_hidden] = sig; break;
+            case 2: activations[num_hidden] = linear; break;
+            case 3: activations[num_hidden] = ReLU; break;
+        }
+        if(active_mlp != NULL) {
+            mlp_free(active_mlp);
+        }
+        active_mlp = mlp_init(num_hidden + 2, layers, activations);
+        printf("MLP Successfully Created\n");
+        free(mlp_file);
+        mlp_file = strdup("unnamed.mlp");
+    }
+}
+
+void __mlp_train(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\ttrain <learning_rate> <epochs>\n\tTrains the selected MLP on the selected Dataset with the given <learning_rate> and <epochs>\n");
+    } else if(args[1] == NULL || args[2] == NULL ) {
+        printf("train error: missing arguments\n");
+    } else if(!strcmp(csv_file, "*")) {
+        printf("train error: no dataset selected\n");
+    } else if(!strcmp(mlp_file, "*")) {
+        printf("train error: no MLP selected\n");
+    } else {
+        char *end;
+        size_t epochs = strtoul(args[2], &end, 10);
+        if(*end != '\0' || args[2] == end) {
+            printf("train error: could not parse epochs integer '%s'\n", args[2]);
+            return;
+        }
+
+        *end;
+        float lr = strtof(args[1], &end);
+        if(*end != '\0' || args[1] == end) {
+            printf("train error: could not parse learning rate epochs '%s'\n", args[1]);
+            return;
+        }
+
+        train(active_mlp, &active_dataset, epochs, lr);
+    }
+}
+
+void __mlp_predict(char **args) {
+    if(args[1] != NULL && !strcmp(args[1], "?")) {
+        printf("usage:\n\tpredict\n\tFinds MSE of Dataset without performing backpropogation\n\tpredict i ...\n\tGets a predicted value using ... as the float inputs\n");
+    } else if(args[1] != NULL && strcmp(args[1], "i")) {
+        printf("predict error: unexpected argument '%s'\n", args[1]);
+    } else if(!strcmp(mlp_file, "*")) {
+        printf("predict error: no MLP selected\n");
+    }else if(args[1] != NULL){
+        int inputs = 0;
+        for(int i = 2; args[i] != NULL; i++) {
+            inputs++;
+        }
+        if(inputs != active_mlp->layers[0]) {
+            printf("predict error: expected %lu inputs but got %i\n", active_mlp->layers[0], inputs);
+        } else {
+            float in[inputs];
+            for(int i = 0; i < inputs; i++) {
+                char *end;
+                in[i] = strtof(args[2 + i], &end);
+                if(*end != '\0' || args[2 + i] == end) {
+                    printf("predict error: could not parse input float '%s'\n", args[2 + i]);
+                    return;
+                }
+            }
+            vector_t *ins = vector(inputs, in);
+            vector_t *outs = forward(active_mlp, ins, 0);
+            printf("The model predicted: ");
+            for(size_t i = 0; i < outs->length; i++) {
+                printf("%f ", outs->vector[i]);
+            }
+            printf("\n");
+            $vector(outs);
+            $vector(ins);
+        }
+    } else if(!strcmp(csv_file, "*")) {
+        printf("predict error: no dataset selected\n");
+    }   else {
+        float mse_sum = 0;
+        for(int i = 0; i < active_dataset.len; i++) {
+            vector_t *outputs = forward(active_mlp, active_dataset.inputs[i], 0);
+            vector_t *error = (vector_t *)mat_sub(active_dataset.targets[i], outputs);
+            mse_sum += mse(error);
+            $vector(outputs);
+            $vector(error);
+        }
+        printf("MSE over %lu data points: %f\n", active_dataset.len, mse_sum / active_dataset.len);
     }
 }
 
@@ -66,32 +349,33 @@ typedef struct {
 } command_t;
 
 command_t none_commands[] = {
-    (command_t){"mlp", NULL}, 
-    (command_t){"csv", NULL},
+    (command_t){"mlp", __mlp}, 
+    (command_t){"csv", __csv},
     (command_t){"cd", __cd}, 
     (command_t){"pwd", __pwd}, 
     (command_t){"ls", __ls}, 
-    (command_t){"exit", NULL}, 
+    (command_t){"exit", __exit}, 
     NULL
 };
 command_t mlp_commands[] = {
     (command_t){"cd", __cd}, 
     (command_t){"pwd", __pwd}, 
     (command_t){"ls", __ls},
-    (command_t){"exit", NULL},
-    (command_t){"new", NULL}, 
+    (command_t){"exit", __mlp_exit},
+    (command_t){"new", __mlp_new}, 
     (command_t){"save", NULL}, 
     (command_t){"read", NULL}, 
-    (command_t){"train", NULL}, 
-    (command_t){"predict", NULL}, 
+    (command_t){"train", __mlp_train}, 
+    (command_t){"predict", __mlp_predict}, 
     NULL
 };
 command_t csv_commands[] = {
     (command_t){"cd", __cd}, 
     (command_t){"pwd", __pwd},
     (command_t){"ls", __ls},
-    (command_t){"exit", NULL}, 
-    (command_t){"read", NULL}, 
+    (command_t){"exit", __csv_exit},
+    (command_t){"read", __csv_read}, 
+    (command_t){"print", __csv_print}, 
     (command_t){"compile", NULL},
     NULL
 };
@@ -101,23 +385,6 @@ command_t *commands[3] = {
     mlp_commands,
     csv_commands
 };
-
-// thx JRL https://stackoverflow.com/a/1431206
-char *ltrim(char *s) {
-    while(isspace(*s)) s++;
-    return s;
-}
-
-char *rtrim(char *s) {
-    char* back = s + strlen(s);
-    while(isspace(*--back));
-    *(back+1) = '\0';
-    return s;
-}
-
-char *trim(char *s) {
-    return rtrim(ltrim(s)); 
-}
 
 char *prompt(MODE mode) {
     static const char *sep = "$ ";
@@ -135,16 +402,17 @@ char *prompt(MODE mode) {
         break;
 
         case MLP:
-
+            prompt = smalloc(strlen(current_dir) + strlen(mlp_file) + 24);
+            sprintf(prompt, "\033[1mMLP\033[0m (%s)[%s]%s", mlp_file, current_dir, sep);
         break;
 
         case CSV:
-
+            prompt = smalloc(strlen(current_dir) + strlen(csv_file) +  24);
+            sprintf(prompt, "\033[1mCSV\033[0m (%s)[%s]%s", csv_file, current_dir, sep);
         break;
     }
     return prompt;
 }
-MODE mode = NONE;
 
 cmd_action_t is_command(char *cmd) {
     command_t* cmds = commands[mode];
@@ -180,48 +448,6 @@ char **completion(const char *init, int start, int end) {
         return rl_completion_matches(init, command_completion);
     }
     free(buf);
-
-    // char *buf = strdup(rl_line_buffer);
-    // char *cmd = ltrim(buf);
-    // {
-    //     int i = 0;
-    //     while(!whitespace(cmd)) i++;
-    //     cmd[i] = '\0';
-    // }
-    // if(is_command(cmd)) {
-    //     free(buf);
-    //     char *tmp = strdup(rl_line_buffer);
-    //     buf = ltrim(buf);
-    //     int pos = 0;
-    //     int flag = 0;
-    //     for(int i = 0; i < end; i++) {
-    //         if(whitespace(buf[i]) && !flag) {
-    //             pos++;
-    //             flag = 1;
-    //         } else if(!whitespace(buf[i]) && flag) {
-    //             flag = 0;
-    //         }
-    //     }
-    //     int cap = 8;
-    //     char **arr = szalloc(sizeof(char *) * 8);
-    //     strtok(arr, " \t");
-    //     for(int i = 1; (buf = strtok(NULL, " \t")); i++) {
-    //         if(i + 1 >= cap) {
-    //             cap *= 1.5;
-    //             char *narr = szalloc(sizeof(char *) * cap);
-    //             memcpy(narr, arr, sizeof(char *) * 8);
-    //             free(arr);
-    //             arr = narr;
-    //         }
-    //         arr[i] = buf;
-    //     }
-
-    //     // do stf here
-
-    //     free(tmp);
-    //     free(arr);
-    // 
-    // }
     rl_filename_quoting_desired = 1;
     return NULL;
 }
@@ -326,6 +552,9 @@ int main() {
 
     // printf("%s", prompt(mode));
 
+    csv_file = strdup("*");
+    mlp_file = strdup("*");
+
     int running = 1;
 
     char *line;
@@ -336,6 +565,10 @@ int main() {
         if(!line) {
             printf("STDIN closed by user\n");
             break;
+        }
+        line = trim(line);
+        if(strlen(line) > 0) {
+            add_history(line);
         }
         char **arr = parse(line);
         if(arr[0] != NULL) {
@@ -349,9 +582,6 @@ int main() {
         free(arr);
         // line = trim(line);
         // perform(line);
-        if(strlen(line) > 0) {
-            add_history(line);
-        }
         free(linestart);
         free(prmt);
         prmt = prompt(mode);
@@ -359,44 +589,3 @@ int main() {
     return 0;
 
 }
-
-
-// int main() {
-//     srandf(clock());
-
-//     size_t num_layers = 3;
-//     size_t layers[3] = {2, 5, 1};
-//     activation_t activations[] = {sig, sig};
-
-//     mlp_t *m = mlp_init(num_layers, layers, activations);
-
-//     int num_inputs = 1000;
-//     vector_t * inputs[num_inputs];
-//     vector_t * targets[num_inputs];
-//     for(int i = 0; i < num_inputs; i++) {
-//         float f1 = (float)rand() / (RAND_MAX * 2L);
-//         float f2 = (float)rand() / (RAND_MAX * 2L);
-//         inputs[i] = vector(2, (float[2]){f1, f2});
-//         targets[i] = vector(1, (float[1]){f1 + f2});
-//     }
-
-//     dataset_t dataset = {num_inputs, inputs, targets};
-    
-//     train(m, &dataset, 50000, 0.1f);
-
-//     printf("Testing with %f + %f: ", 0.3, 0.4);
-//     vector_t *in = vector(2, (float[2]){0.3, 0.4});
-//     vector_t *result = forward(m, in, 0);
-//     printf("%f\n", result->vector[0]);
-
-//     $vector(in);
-//     $vector(result);
-//     for(int i = 0; i < num_inputs; i++) {
-//         $vector(inputs[i]);
-//         $vector(targets[i]);
-//     }
-    
-//     mlp_free(m);
-
-//     return 0;
-// }

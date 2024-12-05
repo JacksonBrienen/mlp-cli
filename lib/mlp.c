@@ -114,7 +114,6 @@ float mse(vector_t *error) {
 }
 
 void train(mlp_t *mlp, dataset_t *data, size_t epochs, float lr) {
-
     for(size_t epoch = 1; epoch < epochs + 1; epoch++) {
         double error_sum = 0;
         for(int i = 0; i < data->len; i++) {
