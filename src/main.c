@@ -358,6 +358,7 @@ command_t none_commands[] = {
     NULL
 };
 command_t mlp_commands[] = {
+    (command_t){"csv", __csv},
     (command_t){"cd", __cd}, 
     (command_t){"pwd", __pwd}, 
     (command_t){"ls", __ls},
@@ -370,6 +371,7 @@ command_t mlp_commands[] = {
     NULL
 };
 command_t csv_commands[] = {
+    (command_t){"mlp", __mlp},
     (command_t){"cd", __cd}, 
     (command_t){"pwd", __pwd},
     (command_t){"ls", __ls},
