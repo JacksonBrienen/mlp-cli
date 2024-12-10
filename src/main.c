@@ -329,15 +329,7 @@ void __mlp_predict(char **args) {
     } else if(!strcmp(csv_file, "*")) {
         printf("predict error: no dataset selected\n");
     }   else {
-        float mse_sum = 0;
-        for(int i = 0; i < active_dataset.len; i++) {
-            vector_t *outputs = forward(active_mlp, active_dataset.inputs[i], 0);
-            vector_t *error = (vector_t *)mat_sub(active_dataset.targets[i], outputs);
-            mse_sum += mse(error);
-            $vector(outputs);
-            $vector(error);
-        }
-        printf("MSE over %lu data points: %f\n", active_dataset.len, mse_sum / active_dataset.len);
+        predict(active_mlp, &active_dataset);
     }
 }
 

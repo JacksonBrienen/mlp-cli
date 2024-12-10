@@ -31,6 +31,8 @@ void mlp_free(mlp_t *mlp);
 
 vector_t *__applyf(vector_t *in, float(*f)(float));
 
+vector_t *bias(vector_t *v);
+
 vector_t *forward(mlp_t *mlp, vector_t *inputs, int store);
 
 void backward(mlp_t *mlp, vector_t *error);
@@ -40,5 +42,7 @@ void gradient_descent(mlp_t *mlp, float lr);
 float mse(vector_t *error);
 
 void train(mlp_t *mlp, dataset_t *data, size_t epochs, float lr);
+
+void predict(mlp_t *mlp, dataset_t *data);
 
 #endif

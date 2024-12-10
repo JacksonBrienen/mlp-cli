@@ -12,7 +12,7 @@ mlp_t *mlp_init(size_t num_layers, size_t* layers, activation_t *activations) {
     m->weights = smalloc(sizeof(matrix_t *) * (num_layers - 1));
 
     for(size_t i = 0; i < num_layers - 1; i++) {
-        size_t rows = layers[i];
+        size_t rows = layers[i] + (i == 0 ? 0 : 1); // add a bias node for all feeding layers except input
         size_t cols = layers[i + 1];
         float **matr = salloc2d(float, rows, cols);
         for(int r = 0; r < rows; r++) {
@@ -48,13 +48,21 @@ vector_t *__applyf(vector_t *in, float(*f)(float)) {
     return out;
 }
 
+vector_t *bias(vector_t *v) {
+    float values[v->length + 1];
+    memcpy(values, v->vector, v->length * sizeof(float));
+    values[v->length] = 1;
+    return vector(v->length + 1, values);
+}
+
 vector_t *forward(mlp_t *mlp, vector_t *inputs, int store) {
     if(mlp->layers[0] != inputs->length) {
         return NULL;
     }
     vector_t *activations = mcopy(inputs);
     mlp->_acts[0] = mcopy(activations);
-    for(size_t i = 0; i < mlp->len - 1; i++) {
+    // calcuate inner layers, biasing each activation
+    for(size_t i = 0; i < mlp->len - 2; i++) {
         vector_t *net = (vector_t *)mat_mul(activations, mlp->weights[i]);
         $vector(activations);
         activations = __applyf(net, mlp->activations[i].activation);
@@ -62,13 +70,25 @@ vector_t *forward(mlp_t *mlp, vector_t *inputs, int store) {
         if(!store) {
             $vector(mlp->_acts[i]);
         }
+
+        vector_t *unbiased = activations;
+        activations = bias(activations);
+        $vector(unbiased);
         mlp->_acts[i + 1] = mcopy(activations);
     }
-    
+
+    // calculate final result without biasing
     if(!store) {
-        $vector(mlp->_acts[mlp->len - 1]);
+        $vector(mlp->_acts[mlp->len - 2]);
     }
-    
+    vector_t *net = (vector_t *)mat_mul(activations, mlp->weights[mlp->len - 2]);
+    $vector(activations);
+    activations = __applyf(net, mlp->activations[mlp->len - 2].activation);
+    $vector(net);
+    if(store) {
+        mlp->_acts[mlp->len - 1] = mcopy(activations);
+    }
+
     return activations;
 }
 
@@ -82,6 +102,13 @@ void backward(mlp_t *mlp, vector_t *error) {
         $vector(mlp->_acts[i + 1]);
 
         matrix_t *aT = transpose(mlp->_acts[i]);
+        if(i < mlp->len - 2) {
+            // We don't multiply our activations
+            // by our the error of our bais node
+            // as our bias node error was not a
+            // result of these activations
+            delta->length--;
+        }
         mlp->_derivatives[i] = mat_mul(aT, delta);
         $matrix(aT);
 
@@ -122,12 +149,23 @@ void train(mlp_t *mlp, dataset_t *data, size_t epochs, float lr) {
             backward(mlp, error);
             gradient_descent(mlp, lr);
             error_sum += mse(error);
-
             $vector(out);
             $vector(error);
         }
 
         printf("MSE: %f at epoch %i\n", error_sum / data->len, epoch);
     }
+    predict(mlp, data);
+}
 
+void predict(mlp_t *mlp, dataset_t *data) {
+    float mse_sum = 0;
+    for(int i = 0; i < data->len; i++) {
+        vector_t *outputs = forward(mlp, data->inputs[i], 0);
+        vector_t *error = (vector_t *)mat_sub(data->targets[i], outputs);
+        mse_sum += mse(error);
+        $vector(outputs);
+        $vector(error);
+    }
+    printf("MSE over %lu data points: %f\n", data->len, mse_sum / data->len);
 }
